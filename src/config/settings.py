@@ -26,7 +26,7 @@ PURPLE = (128, 0, 128)
 
 # Game settings
 SPEED_BOOST_DURATION = 5  # Duration of speed boost in seconds
-ENEMY_SPEED = 5  # Speed of the enemy
+ENEMY_SPEED = 0.2  # Drastically reduced starting speed of the enemy
 FONT_SIZE = 36  # Default font size for text display
 MENU_FONT_SIZE = 72  # Font size for menu title
 

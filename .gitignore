@@ -10,3 +10,4 @@ ENV/
 .vscode/
 *.pyc
 .DS_Store
+ENHANCEMENTS.md

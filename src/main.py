@@ -8,6 +8,7 @@ from src.components.enemy import Enemy
 from src.components.menu import Menu
 from src.components.bullet import Bullet
 from src.components.ammo import Ammo
+from src.engine import GraphicsEngine
 from src.config.settings import (
     SCREEN_WIDTH, SCREEN_HEIGHT, GRID_SIZE,
     BASE_FPS, BLACK, WHITE, GRID_LINE_COLOR,
@@ -21,6 +22,9 @@ class Game:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
         
+        # Initialize graphics engine
+        self.graphics = GraphicsEngine(self.screen)
+        
         # Game components
         self.menu = Menu()
         self.snake = Snake()
@@ -33,6 +37,7 @@ class Game:
         self.game_state = "menu"  # menu, playing, paused, game_over
         self.score = 0
         self.high_score = 0
+        self.enemy_slowdown_end = 0  # Track enemy slowdown timer
         
     def handle_input(self):
         for event in pygame.event.get():
@@ -73,6 +78,16 @@ class Game:
         # Move snake
         self.snake.move()
         
+        # Handle enemy slowdown if snake is boosted
+        if self.snake.is_boosted:
+            # Slow enemy significantly during the snake's boost
+            self.enemy.speed = max(self.enemy.base_speed * 0.2, 0.1)  # Drastically reduced speed
+            self.enemy_slowdown_end = self.snake.speed_boost_end
+        elif self.enemy_slowdown_end and time.time() >= self.enemy_slowdown_end:
+            # Restore enemy speed to base value after boost ends
+            self.enemy.speed = self.enemy.base_speed
+            self.enemy_slowdown_end = 0
+
         # Move enemy
         self.enemy.move(self.snake.head, self.food.position)
         
@@ -97,13 +112,21 @@ class Game:
         if self.snake.head == self.food.position:
             self.score += self.food.points
             self.high_score = max(self.score, self.high_score)
+            prev_boosted = self.snake.is_boosted
             self.snake.apply_food_effect(self.food.effect)
+            # If snake just got a speed boost, trigger enemy slowdown
+            if self.food.effect == 'speed' and not prev_boosted:
+                self.enemy.speed = max(self.enemy.base_speed * 0.5, 1)
+                self.enemy_slowdown_end = self.snake.speed_boost_end
             self.food.set_random_type()
             self.food.randomize_position(self.snake.positions, self.enemy.position)
             
         # Check food collision for enemy
         if self.enemy.collides_with(self.food.position):
-            self.enemy.grow()
+            if self.food.effect == 'grow':
+                self.enemy.grow(amount=3)
+            else:
+                self.enemy.grow(amount=1)
             self.food.set_random_type()
             self.food.randomize_position(self.snake.positions, self.enemy.position)
             
@@ -122,6 +145,9 @@ class Game:
     def draw_game(self):
         self.screen.fill(BLACK)
         
+        # Clear previous frame effects
+        self.graphics.update()
+        
         # Draw grid with fading effect
         for x in range(0, SCREEN_WIDTH, GRID_SIZE):
             fade = 1 - abs(x - SCREEN_WIDTH/2) / (SCREEN_WIDTH/2)
@@ -132,15 +158,39 @@ class Game:
             color = tuple(int(c * fade) for c in GRID_LINE_COLOR)
             pygame.draw.line(self.screen, color, (0, y), (SCREEN_WIDTH, y))
         
-        # Draw game objects with enhanced effects
+        # Draw enemy with glow effect
+        enemy_glow = self.graphics.create_glow((*self.enemy.color[:3], 128), GRID_SIZE * 2)
+        self.screen.blit(enemy_glow, 
+                        (self.enemy.position[0] - GRID_SIZE//2,
+                         self.enemy.position[1] - GRID_SIZE//2))
         self.enemy.draw(self.screen)
+        
+        # Draw food with pulsing glow
         self.food.draw(self.screen)
         
-        # Draw snake with gradient effect
+        # Draw snake with enhanced effects
         for i, pos in enumerate(self.snake.positions):
+            color = self.snake.get_color(i)
             if i == 0:  # Head
-                pygame.draw.rect(self.screen, self.snake.get_color(i),
-                               (pos[0], pos[1], GRID_SIZE-1, GRID_SIZE-1))
+                # Create gradient for head
+                head_surface = self.graphics.create_gradient(
+                    color, (*color[:3], 180), GRID_SIZE
+                )
+                self.screen.blit(head_surface, pos)
+                
+                # Add movement particles
+                if self.snake.speed > BASE_FPS:
+                    self.graphics.add_particle_effect(
+                        pos,
+                        color,
+                        2,
+                        10,
+                        velocity=(-2, 0) if self.snake.direction == 'right' else
+                                (2, 0) if self.snake.direction == 'left' else
+                                (0, 2) if self.snake.direction == 'up' else
+                                (0, -2)
+                    )
+                
                 # Draw eyes
                 eye_color = WHITE
                 eye_size = 4
